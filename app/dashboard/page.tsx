@@ -717,7 +717,7 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${activeProject?.name ?? "trustlayer"}-patch.csv`;
+    link.download = `${activeProject?.name ?? "GroundTruth"}-patch.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -761,7 +761,7 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
                     <Logo size="md" />
                   </Link>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">TrustLayer</p>
+                    <p className="truncate text-sm font-semibold">GroundTruth</p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Projects</p>
                   </div>
                 </div>
@@ -928,7 +928,7 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
               <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
                 <Link className="inline-flex items-center gap-1 hover:text-zinc-900 dark:text-zinc-100" href="/">
                   <Logo size="sm" />
-                  TrustLayer
+                  GroundTruth
                 </Link>
                 <span>/</span>
                 <Link className="hover:text-zinc-900 dark:text-zinc-100" href="/dashboard">

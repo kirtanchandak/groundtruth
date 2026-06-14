@@ -521,7 +521,7 @@ export async function POST(_request: Request, context: RouteContext<"/api/projec
         await write(controller, state, id, {
           type: "run_started",
           mode,
-          message: `TrustLayer agent pipeline started — ${targetRows.length} row${targetRows.length === 1 ? "" : "s"} queued.`,
+          message: `GroundTruth agent pipeline started — ${targetRows.length} row${targetRows.length === 1 ? "" : "s"} queued.`,
           progress: 0,
         });
 
@@ -579,7 +579,7 @@ export async function POST(_request: Request, context: RouteContext<"/api/projec
           });
         }
       } catch (error) {
-        console.error("TrustLayer project run failed.", error);
+        console.error("GroundTruth project run failed.", error);
         logRun(id, "Run failed", {
           mode: "fallback",
           rows: targetRows.length,

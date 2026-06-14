@@ -83,7 +83,7 @@ async function evaluateCompanyLive(row: CompanyRecord): Promise<DataPR> {
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
   const systemPrompt = [
-    "You are the Source Hunter agent inside TrustLayer, an autonomous B2B data steward.",
+    "You are the Source Hunter agent inside GroundTruth, an autonomous B2B data steward.",
     "Your ONLY job: search the web and find authoritative public evidence for the supplied company.",
     "Search for: official company website, LinkedIn profile, Crunchbase/funding data, recent news.",
     "Verify headcount, HQ location, total funding raised, industry vertical, website, and LinkedIn URL.",
@@ -105,7 +105,7 @@ async function evaluateCompanyLive(row: CompanyRecord): Promise<DataPR> {
       text: {
         format: {
           type: "json_schema",
-          name: "trustlayer_source_hunter_eval",
+          name: "GroundTruth_source_hunter_eval",
           strict: true,
           schema: evaluateResponseJsonSchema,
         },

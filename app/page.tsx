@@ -49,7 +49,7 @@ export default function LandingPage() {
       <nav className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6 lg:px-8">
         <div className="flex items-center gap-2">
           <Logo size="md" />
-          <p className="text-lg font-bold tracking-tight">TrustLayer</p>
+          <p className="text-lg font-bold tracking-tight">GroundTruth</p>
         </div>
         <div className="flex items-center gap-4">
           <ThemeToggle />
@@ -77,7 +77,7 @@ export default function LandingPage() {
         </h1>
         
         <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-          TrustLayer continuously audits enterprise databases, detects
+          GroundTruth continuously audits enterprise databases, detects
           contradictions, assigns trust scores, and automatically packages
           verified updates to sync directly with your CRM.
         </p>
@@ -115,7 +115,7 @@ export default function LandingPage() {
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-8 dark:border-white/10 dark:bg-[#1a1a1a]">
             <p className="text-4xl font-bold text-emerald-600 dark:text-emerald-500">91%</p>
             <p className="mt-2 text-sm leading-snug text-zinc-600 dark:text-zinc-400">
-              avg confidence after<br />TrustLayer
+              avg confidence after<br />GroundTruth
             </p>
           </div>
         </div>
@@ -307,7 +307,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl dark:text-white">
             Every other tool tells you what the data is.
             <br />
-            <span className="text-rose-600 dark:text-rose-400">TrustLayer tells you whether to believe it.</span>
+            <span className="text-rose-600 dark:text-rose-400">GroundTruth tells you whether to believe it.</span>
           </h2>
         </div>
       </section>
@@ -317,9 +317,9 @@ export default function LandingPage() {
         <div className="mx-auto max-w-5xl px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-zinc-500 dark:text-zinc-400">
           <div className="flex items-center gap-2">
             <Logo size="sm" />
-            <span className="font-semibold text-zinc-900 dark:text-white">TrustLayer</span>
+            <span className="font-semibold text-zinc-900 dark:text-white">GroundTruth</span>
           </div>
-          <p>© {new Date().getFullYear()} TrustLayer Inc. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} GroundTruth Inc. All rights reserved.</p>
           <div className="flex gap-4">
             <Link href="/dashboard" className="hover:text-zinc-900 dark:hover:text-white transition-colors">Dashboard</Link>
             <a href="#" className="hover:text-zinc-900 dark:hover:text-white transition-colors">Privacy</a>

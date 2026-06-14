@@ -16,6 +16,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "GroundTruth",
   description: "Autonomous Evals for Enterprise Data",
+  icons: {
+    icon: "/groundtruth_icon.png",
+    apple: "/groundtruth_icon.png",
+  },
 };
 
 export default function RootLayout({
