@@ -2011,6 +2011,8 @@ function AgentTraceTab({ events }: { events: AgentEvent[] }) {
     );
   }
 
+  const chronologicalEvents = [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
   // Derive per-agent state from events
   const agentSequence: AgentRole[] = [
     "ingestion",
@@ -2032,7 +2034,7 @@ function AgentTraceTab({ events }: { events: AgentEvent[] }) {
   };
 
   // Walk events in order to build state
-  for (const evt of events) {
+  for (const evt of chronologicalEvents) {
     if (!evt.agent) continue;
     const role = evt.agent;
     if (evt.type === "agent_started") {
@@ -2046,9 +2048,9 @@ function AgentTraceTab({ events }: { events: AgentEvent[] }) {
   }
 
   // Evidence and field-update counts
-  const evidenceCount = events.filter((e) => e.type === "evidence_found").length;
-  const fieldCount = events.filter((e) => e.type === "field_update").length;
-  const isRunComplete = events.some((e) => e.type === "company_completed" || e.type === "data_pr_created");
+  const evidenceCount = chronologicalEvents.filter((e) => e.type === "evidence_found").length;
+  const fieldCount = chronologicalEvents.filter((e) => e.type === "field_update").length;
+  const isRunComplete = chronologicalEvents.some((e) => e.type === "company_completed" || e.type === "data_pr_created");
 
   return (
     <div className="space-y-4">
