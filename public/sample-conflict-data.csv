@@ -1,0 +1,6 @@
+company_name,website,linkedin_url,current_headcount,current_hq,current_funding,current_industry,account_owner,segment
+Zoho,https://www.zoho.com,https://www.linkedin.com/company/zoho/,120,"San Francisco, CA","$18B",Security,Sara Patel,SMB
+Freshworks,https://www.freshworks.com,https://www.linkedin.com/company/freshworks-inc/,80,Pune,"$5M",Cloud Kitchen,Rahul Mehta,SMB
+HubSpot,https://www.hubspot.com,https://www.linkedin.com/company/hubspot/,120000,Berlin,Bootstrapped,D2C Logistics,Ana Gomez,Enterprise
+Stripe,https://stripe.com,https://www.linkedin.com/company/stripe/,75,Dublin,"$30M",EdTech,Jason Lee,Mid-market
+Notion,https://www.notion.so,https://www.linkedin.com/company/notionhq/,35,Austin,"$250M",Recruiting,Maya Chen,Enterprise

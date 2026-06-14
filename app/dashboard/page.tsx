@@ -187,31 +187,6 @@ function reviewerText(action?: ReviewerAction) {
   return "Accepted";
 }
 
-function humanizeEventType(type: AgentEvent["type"]) {
-  switch (type) {
-    case "run_started":
-      return "Run started";
-    case "company_started":
-      return "Row started";
-    case "agent_started":
-      return "Agent active";
-    case "field_update":
-      return "Field updated";
-    case "evidence_found":
-      return "Evidence added";
-    case "data_pr_created":
-      return "Data PR ready";
-    case "company_completed":
-      return "Row completed";
-    case "run_completed":
-      return "Run completed";
-    case "run_failed":
-      return "Run failed";
-    default:
-      return type;
-  }
-}
-
 export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRoute?: string } = {}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1724,44 +1699,65 @@ function LiveStreamPanel({
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Derive per-agent state from events
-  const agentSequence: AgentRole[] = [
-    "ingestion",
-    "source_hunter",
-    "identity_resolver",
-    "contradiction_analyst",
-    "trust_scorer",
-    "data_pr_writer",
-  ];
+  const liveEvents = events
+    .filter((event) => ["run_started", "company_started", "agent_started", "agent_log", "field_update", "evidence_found", "data_pr_created", "company_completed", "run_completed", "run_failed"].includes(event.type))
+    .slice(-8);
 
-  type AgentStatus = "pending" | "running" | "done";
-  const agentState: Record<AgentRole, { status: AgentStatus; completionMsg: string; thinkingMsg: string }> = {
-    ingestion:             { status: "pending", completionMsg: "", thinkingMsg: "" },
-    source_hunter:         { status: "pending", completionMsg: "", thinkingMsg: "" },
-    identity_resolver:     { status: "pending", completionMsg: "", thinkingMsg: "" },
-    contradiction_analyst: { status: "pending", completionMsg: "", thinkingMsg: "" },
-    trust_scorer:          { status: "pending", completionMsg: "", thinkingMsg: "" },
-    data_pr_writer:        { status: "pending", completionMsg: "", thinkingMsg: "" },
-  };
+  const latest = liveEvents[liveEvents.length - 1];
 
-  // Walk events in order to build state
-  for (const evt of events) {
-    if (!evt.agent) continue;
-    const role = evt.agent;
-    if (evt.type === "agent_started") {
-      agentState[role].status = "running";
-      if (evt.message) agentState[role].thinkingMsg = evt.message;
-    }
-    if (evt.type === "agent_log") {
-      agentState[role].status = "done";
-      if (evt.message) agentState[role].completionMsg = evt.message;
+  function eventLabel(event: AgentEvent) {
+    switch (event.type) {
+      case "run_started":
+        return "Run started";
+      case "company_started":
+        return "Row started";
+      case "agent_started":
+        return "Agent active";
+      case "agent_log":
+        return "Agent update";
+      case "field_update":
+        return "Field scored";
+      case "evidence_found":
+        return "Evidence added";
+      case "data_pr_created":
+        return "Data PR ready";
+      case "company_completed":
+        return "Row completed";
+      case "run_completed":
+        return "Run completed";
+      case "run_failed":
+        return "Run failed";
+      default:
+        return event.type;
     }
   }
 
-  const liveEvents = events.filter((event) => ["run_started", "company_started", "agent_started", "field_update", "evidence_found", "data_pr_created"].includes(event.type));
-  const latest = liveEvents[0];
+  function eventTone(event: AgentEvent) {
+    switch (event.type) {
+      case "run_failed":
+        return "text-rose-600 dark:text-rose-400";
+      case "data_pr_created":
+      case "company_completed":
+      case "run_completed":
+        return "text-emerald-600 dark:text-emerald-400";
+      case "evidence_found":
+      case "field_update":
+        return "text-amber-600 dark:text-amber-400";
+      default:
+        return "text-cyan-600 dark:text-cyan-400";
+    }
+  }
 
-  if (!isLive) {
+  function formatTime(timestamp: string) {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(new Date(timestamp));
+  }
+
+  if (!isLive && !liveEvents.length) {
     return null;
   }
 
@@ -1771,7 +1767,7 @@ function LiveStreamPanel({
         <div className="flex items-center gap-2">
           <Loader2 className={cx("h-4 w-4 text-cyan-600", isLive && "animate-spin")} aria-hidden="true" />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Live pipeline execution</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Live console</p>
             <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{contextLabel}</p>
           </div>
         </div>
@@ -1798,82 +1794,40 @@ function LiveStreamPanel({
       </div>
 
       {!isCollapsed && (
-        <div className="mt-4 space-y-2">
-          {agentSequence.map((role) => {
-            const profile = agentProfiles.find((p) => p.role === role)!;
-            const state = agentState[role];
-            const colors = agentColorMap[role];
-            const Icon = agentIconMap[role];
-            const isActive = state.status === "running";
-            const isDone = state.status === "done";
-            const isPending = state.status === "pending";
-
-            return (
-              <div
-                key={role}
-                className={cx(
-                  "rounded-lg border p-2.5 transition-all duration-300 text-xs",
-                  isActive ? cx("border-2", colors.border, colors.bg) : isDone ? cx("border", colors.border, colors.bg, "opacity-90") : "border-zinc-100 dark:border-white/5 opacity-40"
-                )}
-              >
-                <div className="flex items-start gap-2.5">
-                  {/* Icon */}
-                  <div className={cx(
-                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
-                    isDone || isActive ? colors.bg : "bg-zinc-100 dark:bg-white/5",
-                    isActive && cx("ring-2", colors.ring)
-                  )}>
-                    {isActive ? (
-                      <Loader2 className={cx("h-3 w-3 animate-spin", colors.text)} />
-                    ) : isDone ? (
-                      <Icon className={cx("h-3 w-3", colors.text)} />
-                    ) : (
-                      <Icon className="h-3 w-3 text-zinc-300 dark:text-zinc-600" />
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={cx(
-                        "font-semibold text-[11px]",
-                        isDone || isActive ? colors.text : "text-zinc-400 dark:text-zinc-600"
-                      )}>
-                        {profile.name}
-                      </p>
-                      {isDone && (
-                        <span className={cx("shrink-0 rounded-full px-1.5 py-0.2 text-[9px] font-semibold", colors.bg, colors.text)}>
-                          done
+        <div className={cx("mt-4 rounded-md border border-zinc-200 dark:border-white/10 bg-[#0f0f0f] text-zinc-200", compact ? "max-h-[180px]" : "max-h-[280px]", "overflow-auto")}>
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#0f0f0f]/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
+            <span>Timestamp</span>
+            <span>Activity</span>
+          </div>
+          <div className="divide-y divide-white/5 font-mono text-[11px] leading-5">
+            {liveEvents.length ? (
+              liveEvents.map((event) => (
+                <div key={event.id} className="grid grid-cols-[76px_1fr] gap-3 px-3 py-2 hover:bg-white/5">
+                  <span className="text-zinc-500">{formatTime(event.timestamp)}</span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={cx("font-semibold uppercase tracking-[0.12em]", eventTone(event))}>
+                        {eventLabel(event)}
+                      </span>
+                      {event.mode ? (
+                        <span className="rounded border border-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-400">
+                          {event.mode}
                         </span>
-                      )}
-                      {isActive && (
-                        <span className="shrink-0 rounded-full bg-cyan-500/10 px-1.5 py-0.2 text-[9px] font-semibold text-cyan-500 animate-pulse">
-                          running
-                        </span>
-                      )}
+                      ) : null}
+                      {event.agent ? (
+                        <span className="text-zinc-500">{agentNameByRole[event.agent]}</span>
+                      ) : null}
                     </div>
-
-                    {/* Message */}
-                    {isActive && state.thinkingMsg && (
-                      <p className="mt-0.5 text-[11px] leading-4 text-zinc-600 dark:text-zinc-300">
-                        {state.thinkingMsg}
-                      </p>
-                    )}
-                    {isDone && state.completionMsg && (
-                      <p className="mt-0.5 text-[11px] leading-4 text-zinc-600 dark:text-zinc-300">
-                        {state.completionMsg}
-                      </p>
-                    )}
-                    {isPending && (
-                      <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-zinc-600 truncate">
-                        {profile.description}
-                      </p>
-                    )}
+                    <p className="mt-0.5 break-words text-zinc-200">
+                      {event.message || "Activity event received."}
+                    </p>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              ))
+            ) : (
+              <div className="px-3 py-4 text-zinc-500">Waiting for activity.</div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -2113,7 +2067,7 @@ function AgentTraceTab({ events }: { events: AgentEvent[] }) {
 
       {/* ── Agent steps ── */}
       <div className="space-y-2">
-        {agentSequence.map((role, idx) => {
+        {agentSequence.map((role) => {
           const profile = agentProfiles.find((p) => p.role === role)!;
           const state = agentState[role];
           const colors = agentColorMap[role];

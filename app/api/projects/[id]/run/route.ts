@@ -1,5 +1,3 @@
-import OpenAI from "openai";
-
 import { buildFallbackResponse } from "@/lib/sample-data";
 import {
   getProject,
@@ -12,7 +10,6 @@ import {
   upsertDataPr,
 } from "@/lib/project-store";
 import {
-  agentNameByRole,
   type AgentEvent,
   type AgentRole,
   type CompanyRecord,
@@ -35,20 +32,20 @@ export const dynamic = "force-dynamic";
 
 const encoder = new TextEncoder();
 
-const agentSequence: AgentRole[] = [
-  "ingestion",
-  "source_hunter",
-  "identity_resolver",
-  "contradiction_analyst",
-  "trust_scorer",
-  "data_pr_writer",
-];
-
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type StreamState = {
   closed: boolean;
 };
+
+function logRun(projectId: string, message: string, details?: Record<string, unknown>) {
+  const prefix = `[GroundTruth:${projectId}]`;
+  if (details) {
+    console.info(new Date().toISOString(), prefix, message, details);
+    return;
+  }
+  console.info(new Date().toISOString(), prefix, message);
+}
 
 function eventId() {
   return `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -107,6 +104,12 @@ async function emitCompany(
   index: number,
   mode: "live" | "fallback",
 ) {
+  logRun(projectId, "Row started", {
+    company: record.company_name,
+    rowId,
+    position: index + 1,
+    mode,
+  });
   await updateRowStatus(projectId, rowId, "running", 5);
   await write(controller, state, projectId, {
     type: "company_started",
@@ -125,6 +128,11 @@ async function emitCompany(
   {
     const agent: AgentRole = "ingestion";
     const agentResult = ingestionAgent(record);
+    logRun(projectId, "Agent started", {
+      company: record.company_name,
+      rowId,
+      agent,
+    });
     await write(controller, state, projectId, {
       type: "agent_started",
       mode: activeMode,
@@ -137,6 +145,12 @@ async function emitCompany(
     });
     await updateRowStatus(projectId, rowId, "running", 10);
     await delay(250 + index * 60);
+    logRun(projectId, "Agent completed", {
+      company: record.company_name,
+      rowId,
+      agent,
+      summary: agentResult.completionMessage,
+    });
     await write(controller, state, projectId, {
       type: "agent_log",
       mode: activeMode,
@@ -153,6 +167,13 @@ async function emitCompany(
   // ─── Agent 2: Source Hunter (real LLM call with web_search) ─────────────────
   {
     const agent: AgentRole = "source_hunter";
+    logRun(projectId, "Agent started", {
+      company: record.company_name,
+      rowId,
+      agent,
+      mode: activeMode,
+      action: "web search",
+    });
     await write(controller, state, projectId, {
       type: "agent_started",
       mode: activeMode,
@@ -169,6 +190,12 @@ async function emitCompany(
       try {
         const result = await sourceHunterAgent(record);
         pr = result.pr;
+        logRun(projectId, "Web search completed", {
+          company: record.company_name,
+          rowId,
+          sources: pr.sources.length,
+          decision: pr.decision,
+        });
         await write(controller, state, projectId, {
           type: "agent_log",
           mode: activeMode,
@@ -182,6 +209,10 @@ async function emitCompany(
         activeMode = "fallback";
         pr = fallbackPrFor(record);
         console.error(`Source Hunter failed for ${record.company_name}; using fallback.`, error);
+        logRun(projectId, "Web search failed; using fallback", {
+          company: record.company_name,
+          rowId,
+        });
         await write(controller, state, projectId, {
           type: "agent_log",
           mode: activeMode,
@@ -194,6 +225,11 @@ async function emitCompany(
       }
     } else {
       await delay(400 + index * 80);
+      logRun(projectId, "No API key; using cached evidence", {
+        company: record.company_name,
+        rowId,
+        sources: pr.sources.length,
+      });
       await write(controller, state, projectId, {
         type: "agent_log",
         mode: activeMode,
@@ -210,6 +246,12 @@ async function emitCompany(
       if (state.closed) return pr;
       await delay(80);
       await insertEvidence(projectId, rowId, "website", source);
+      logRun(projectId, "Evidence captured", {
+        company: record.company_name,
+        rowId,
+        title: source.title,
+        sourceType: source.sourceType,
+      });
       await write(controller, state, projectId, {
         type: "evidence_found",
         mode: activeMode,
@@ -230,6 +272,11 @@ async function emitCompany(
   {
     const agent: AgentRole = "identity_resolver";
     const agentResult = identityResolverAgent(record, pr);
+    logRun(projectId, "Agent started", {
+      company: record.company_name,
+      rowId,
+      agent,
+    });
     await write(controller, state, projectId, {
       type: "agent_started",
       mode: activeMode,
@@ -242,6 +289,12 @@ async function emitCompany(
     });
     await updateRowStatus(projectId, rowId, "running", 46);
     await delay(200 + index * 40);
+    logRun(projectId, "Agent completed", {
+      company: record.company_name,
+      rowId,
+      agent,
+      summary: agentResult.completionMessage,
+    });
     await write(controller, state, projectId, {
       type: "agent_log",
       mode: activeMode,
@@ -259,6 +312,11 @@ async function emitCompany(
   {
     const agent: AgentRole = "contradiction_analyst";
     const agentResult = contradictionAnalystAgent(record, pr);
+    logRun(projectId, "Agent started", {
+      company: record.company_name,
+      rowId,
+      agent,
+    });
     await write(controller, state, projectId, {
       type: "agent_started",
       mode: activeMode,
@@ -271,6 +329,12 @@ async function emitCompany(
     });
     await updateRowStatus(projectId, rowId, "running", 58);
     await delay(220 + index * 40);
+    logRun(projectId, "Agent completed", {
+      company: record.company_name,
+      rowId,
+      agent,
+      summary: agentResult.completionMessage,
+    });
     await write(controller, state, projectId, {
       type: "agent_log",
       mode: activeMode,
@@ -288,6 +352,11 @@ async function emitCompany(
   {
     const agent: AgentRole = "trust_scorer";
     const agentResult = trustScorerAgent(record, pr);
+    logRun(projectId, "Agent started", {
+      company: record.company_name,
+      rowId,
+      agent,
+    });
     await write(controller, state, projectId, {
       type: "agent_started",
       mode: activeMode,
@@ -308,6 +377,13 @@ async function emitCompany(
       for (const source of field.evidence) {
         await insertEvidence(projectId, rowId, cell.fieldKey, source);
       }
+      logRun(projectId, "Field scored", {
+        company: record.company_name,
+        rowId,
+        field: field.field,
+        trustScore: field.trustScore,
+        contradictions: field.contradictions.length,
+      });
       await write(controller, state, projectId, {
         type: "field_update",
         mode: activeMode,
@@ -321,6 +397,12 @@ async function emitCompany(
       });
     }
 
+    logRun(projectId, "Agent completed", {
+      company: record.company_name,
+      rowId,
+      agent,
+      summary: agentResult.completionMessage,
+    });
     await write(controller, state, projectId, {
       type: "agent_log",
       mode: activeMode,
@@ -338,6 +420,11 @@ async function emitCompany(
   {
     const agent: AgentRole = "data_pr_writer";
     const agentResult = dataPrWriterAgent(record, pr);
+    logRun(projectId, "Agent started", {
+      company: record.company_name,
+      rowId,
+      agent,
+    });
     await write(controller, state, projectId, {
       type: "agent_started",
       mode: activeMode,
@@ -353,6 +440,12 @@ async function emitCompany(
 
     await upsertDataPr(projectId, rowId, pr);
     await updateRowStatus(projectId, rowId, "completed", 100);
+    logRun(projectId, "Data PR ready", {
+      company: record.company_name,
+      rowId,
+      decision: pr.decision,
+      patches: pr.patchPreview.length,
+    });
 
     await write(controller, state, projectId, {
       type: "agent_log",
@@ -384,6 +477,11 @@ async function emitCompany(
     message: `${record.company_name} pipeline complete.`,
     progress: 100,
   });
+  logRun(projectId, "Row completed", {
+    company: record.company_name,
+    rowId,
+    mode: activeMode,
+  });
 
   return pr;
 }
@@ -411,6 +509,11 @@ export async function POST(_request: Request, context: RouteContext<"/api/projec
       const state: StreamState = { closed: false };
 
       try {
+        logRun(id, "Run started", {
+          mode,
+          rows: targetRows.length,
+          scope: isProjectRun ? "project" : "row",
+        });
         await resetProjectRows(id, targetRows.map((row) => row.id));
         if (isProjectRun) {
           await updateProjectStatus(id, "running");
@@ -431,6 +534,11 @@ export async function POST(_request: Request, context: RouteContext<"/api/projec
         if (isProjectRun) {
           await updateProjectStatus(id, "completed");
         }
+        logRun(id, "Run completed", {
+          mode,
+          rows: targetRows.length,
+          summary,
+        });
         await write(controller, state, id, {
           type: "run_completed",
           mode,
@@ -440,6 +548,11 @@ export async function POST(_request: Request, context: RouteContext<"/api/projec
         });
       } catch (error) {
         console.error("TrustLayer project run failed.", error);
+        logRun(id, "Run failed", {
+          mode: "fallback",
+          rows: targetRows.length,
+          error: error instanceof Error ? error.message : String(error),
+        });
         if (isProjectRun) {
           await updateProjectStatus(id, "failed" as Project["status"]);
         }

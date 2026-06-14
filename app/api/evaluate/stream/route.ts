@@ -58,7 +58,6 @@ function summarize(prs: DataPR[]): EvaluateResponse["summary"] {
 
 function buildAgentMessage(agent: AgentRole, company: string, pr: DataPR) {
   const lowestTrust = [...pr.fieldReviews].sort((a, b) => a.trustScore - b.trustScore)[0];
-  const contradiction = pr.fieldReviews.find((field) => field.contradictions.length);
   const flaggedFields = pr.fieldReviews.filter((f) => f.contradictions.length > 0);
 
   const messages: Record<AgentRole, string> = {

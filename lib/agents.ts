@@ -13,6 +13,15 @@ function makeClient() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+function logAgent(message: string, details?: Record<string, unknown>) {
+  const prefix = "[GroundTruth:SourceHunter]";
+  if (details) {
+    console.info(new Date().toISOString(), prefix, message, details);
+    return;
+  }
+  console.info(new Date().toISOString(), prefix, message);
+}
+
 export type SourceHunterResult = {
   pr: DataPR;
   thinkingMessage: string;
@@ -54,6 +63,10 @@ export async function sourceHunterAgent(
   record: CompanyRecord,
 ): Promise<SourceHunterResult> {
   const client = makeClient();
+  logAgent("Web search started", {
+    company: record.company_name,
+    model: MODEL,
+  });
 
   const systemPrompt = [
     "You are the Source Hunter agent inside TrustLayer, an autonomous B2B data steward.",
@@ -96,6 +109,11 @@ export async function sourceHunterAgent(
     );
     const pr = parsed.prs[0];
     if (!pr) throw new Error("Source Hunter returned no DataPR.");
+    logAgent("Web search completed", {
+      company: record.company_name,
+      sources: pr.sources.length,
+      decision: pr.decision,
+    });
 
     return {
       pr,
@@ -103,6 +121,10 @@ export async function sourceHunterAgent(
     };
   } catch {
     const pr = buildFallbackResponse([record]).prs[0]!;
+    logAgent("Web search unavailable; using fallback cache", {
+      company: record.company_name,
+      sources: pr.sources.length,
+    });
     return {
       pr,
       thinkingMessage: `Used cached data for ${record.company_name} (live search unavailable).`,
