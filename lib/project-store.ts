@@ -102,6 +102,7 @@ function mapProject(row: JsonObject): Project {
     filename: String(row.filename ?? ""),
     rowCount: Number(row.row_count ?? 0),
     status: String(row.status ?? "queued") as Project["status"],
+    runStatus: row.run_status ? (String(row.run_status) as Project["runStatus"]) : undefined,
     createdAt: String(row.created_at),
     completedAt: row.completed_at ? String(row.completed_at) : undefined,
   };
@@ -133,6 +134,7 @@ export async function createProject(input: {
     filename: input.filename ?? "sample.csv",
     rowCount: input.rows.length,
     status: "queued",
+    runStatus: "idle",
     createdAt: now(),
   };
 
@@ -159,14 +161,15 @@ export async function createProject(input: {
     return { mode: "local", project, rows };
   }
 
-  await supabase.from("projects").insert({
-    id: project.id,
-    name: project.name,
-    filename: project.filename,
-    row_count: project.rowCount,
-    status: project.status,
-    created_at: project.createdAt,
-  });
+    await supabase.from("projects").insert({
+      id: project.id,
+      name: project.name,
+      filename: project.filename,
+      row_count: project.rowCount,
+      status: project.status,
+      run_status: project.runStatus,
+      created_at: project.createdAt,
+    });
   await supabase.from("company_rows").insert(
     rows.map((row) => ({
       id: row.id,
@@ -338,11 +341,68 @@ export async function updateProjectStatus(projectId: string, status: Project["st
   if (!supabase) {
     mutateLocal(projectId, (project) => {
       project.status = status;
+      project.runStatus = status === "queued" ? "idle" : status;
       project.completedAt = completedAt;
     });
     return;
   }
-  await supabase.from("projects").update({ status, completed_at: completedAt ?? null }).eq("id", projectId);
+  await supabase
+    .from("projects")
+    .update({ status, run_status: status === "queued" ? "idle" : status, completed_at: completedAt ?? null })
+    .eq("id", projectId);
+}
+
+export async function setProjectRunStatus(projectId: string, runStatus: Project["runStatus"]) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    mutateLocal(projectId, (project) => {
+      project.runStatus = runStatus;
+      if (runStatus && runStatus !== "idle") {
+        project.status = runStatus;
+      } else if (runStatus === "idle") {
+        project.status = "queued";
+      }
+    });
+    return;
+  }
+  await supabase
+    .from("projects")
+    .update({ run_status: runStatus, status: runStatus && runStatus !== "idle" ? runStatus : "queued" })
+    .eq("id", projectId);
+}
+
+export async function resetProjectRows(projectId: string, rowIds: string[]) {
+  if (!rowIds.length) return;
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    mutateLocal(projectId, (_project, rows) => {
+      for (const row of rows) {
+        if (!rowIds.includes(row.id)) continue;
+        row.status = "queued";
+        row.progress = 0;
+        row.dataPr = undefined;
+        row.events = [];
+        row.selectedDecision = undefined;
+        row.cells = row.cells.map((cell) => ({
+          ...cell,
+          status: "queued",
+          trustScore: undefined,
+          rationale: undefined,
+          contradictions: [],
+          evidence: [],
+          proposedValue: cell.currentValue,
+        }));
+      }
+    });
+    return;
+  }
+
+  await supabase.from("company_rows").update({ status: "queued", progress: 0, selected_decision: null }).eq("project_id", projectId).in("id", rowIds);
+  await supabase.from("cell_evals").delete().in("row_id", rowIds);
+  await supabase.from("data_prs").delete().in("row_id", rowIds);
+  await supabase.from("evidence_sources").delete().in("row_id", rowIds);
+  await supabase.from("agent_events").delete().eq("project_id", projectId).in("row_id", rowIds);
 }
 
 export async function updateRowStatus(projectId: string, rowId: string, status: ProjectRow["status"], progress: number) {

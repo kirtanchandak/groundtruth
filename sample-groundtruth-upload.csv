@@ -1,0 +1,6 @@
+company_name,website,linkedin_url,current_headcount,current_hq,current_funding,current_industry,account_owner,segment
+Zoho,https://www.zoho.com,https://www.linkedin.com/company/zoho/,18000,Chennai,Private,Software,Sara Patel,Mid-market
+Freshworks,https://www.freshworks.com,https://www.linkedin.com/company/freshworks-inc/,5500,San Mateo,$900M,Software,Rahul Mehta,Enterprise
+HubSpot,https://www.hubspot.com,https://www.linkedin.com/company/hubspot/,8000,Cambridge,$100M,Software,Ana Gomez,Enterprise
+Stripe,https://stripe.com,https://www.linkedin.com/company/stripe/,8000,San Francisco,$65B,Payments,Jason Lee,Strategic
+Notion,https://www.notion.so,https://www.linkedin.com/company/notionhq/,1200,San Francisco,$10B,Productivity,Maya Chen,Mid-market

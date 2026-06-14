@@ -59,18 +59,21 @@ function summarize(prs: DataPR[]): EvaluateResponse["summary"] {
 function buildAgentMessage(agent: AgentRole, company: string, pr: DataPR) {
   const lowestTrust = [...pr.fieldReviews].sort((a, b) => a.trustScore - b.trustScore)[0];
   const contradiction = pr.fieldReviews.find((field) => field.contradictions.length);
+  const flaggedFields = pr.fieldReviews.filter((f) => f.contradictions.length > 0);
 
   const messages: Record<AgentRole, string> = {
-    ingestion: `Mapped ${company} into the enterprise account schema and queued ${pr.fieldReviews.length} fields.`,
-    source_hunter: `Found ${pr.sources.length} usable public sources for ${company}.`,
-    identity_resolver: `Matched ${company} to ${pr.website || "the supplied company profile"}.`,
-    contradiction_analyst: contradiction
-      ? `Flagged contradiction on ${contradiction.field.replaceAll("_", " ")}.`
-      : `No blocking contradictions found for ${company}.`,
+    ingestion: `Mapped ${pr.fieldReviews.length} fields for ${company} — queued for evidence collection.`,
+    source_hunter: `Found ${pr.sources.length} public source${pr.sources.length !== 1 ? "s" : ""} for ${company}.`,
+    identity_resolver: pr.website
+      ? `Identity confirmed — matched ${company} to ${pr.website}.`
+      : `Identity resolved with available public data for ${company}.`,
+    contradiction_analyst: flaggedFields.length > 0
+      ? `Flagged ${flaggedFields.length} field${flaggedFields.length !== 1 ? "s" : ""} with contradictions: ${flaggedFields.map((f) => f.field.replaceAll("_", " ")).join(", ")}.`
+      : `No contradictions found — CRM data aligns with public evidence for ${company}.`,
     trust_scorer: lowestTrust
-      ? `Lowest trust field is ${lowestTrust.field.replaceAll("_", " ")} at ${lowestTrust.trustScore}%.`
-      : `Scored available evidence for ${company}.`,
-    data_pr_writer: `Drafted recommendation: ${pr.recommendedAction}`,
+      ? `Avg trust scored — weakest field: "${lowestTrust.field.replaceAll("_", " ")}" at ${lowestTrust.trustScore}%.`
+      : `Trust scoring complete for ${company}.`,
+    data_pr_writer: `Data PR drafted — decision: ${pr.decision.replaceAll("_", " ")}. ${pr.patchPreview.length > 0 ? `${pr.patchPreview.length} patch${pr.patchPreview.length !== 1 ? "es" : ""} proposed.` : "No changes recommended."}`,
   };
 
   return messages[agent];
@@ -78,40 +81,46 @@ function buildAgentMessage(agent: AgentRole, company: string, pr: DataPR) {
 
 async function evaluateCompanyLive(row: CompanyRecord): Promise<DataPR> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const model = process.env.OPENAI_MODEL ?? "gpt-5.5";
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+
+  const systemPrompt = [
+    "You are the Source Hunter agent inside TrustLayer, an autonomous B2B data steward.",
+    "Your ONLY job: search the web and find authoritative public evidence for the supplied company.",
+    "Search for: official company website, LinkedIn profile, Crunchbase/funding data, recent news.",
+    "Verify headcount, HQ location, total funding raised, industry vertical, website, and LinkedIn URL.",
+    "Return a single precise DataPR. Be specific — cite exact numbers you found.",
+    "Flag conflicts between CRM data and web evidence in contradictions.",
+    "Decision: approve_update if evidence clearly differs; accept_current if aligned; escalate_human if ambiguous; contact_company if no public data.",
+  ].join("\n");
 
   const response = await client.responses.create(
     {
       model,
+      instructions: systemPrompt,
       input: [
-        "You are GroundTruth, an autonomous RevOps data steward.",
-        "Evaluate exactly one enterprise account record using web evidence.",
-        "Verify headcount, HQ, funding, industry, website, LinkedIn/company profile, and segment/routing impact.",
-        "Return exactly one Data PR inside the prs array. Use concise evidence-backed reasoning.",
-        "If sources contradict, choose escalate_human unless one source is clearly more authoritative.",
-        "",
+        "Evaluate this B2B account record:",
         JSON.stringify([row], null, 2),
+        "",
+        "Search the web, gather evidence, and return a complete DataPR with fieldReviews and sources.",
       ].join("\n"),
-      reasoning: { effort: "medium" },
       text: {
-        verbosity: "low",
         format: {
           type: "json_schema",
-          name: "groundtruth_single_company_eval",
+          name: "trustlayer_source_hunter_eval",
           strict: true,
           schema: evaluateResponseJsonSchema,
         },
       },
       tools: [{ type: "web_search" }],
     },
-    { timeout: 45000 },
+    { timeout: 50000 },
   );
 
   const parsed = EvaluateResponseSchema.omit({ runId: true, mode: true }).parse(JSON.parse(response.output_text));
   const pr = parsed.prs[0];
 
   if (!pr) {
-    throw new Error("Live eval returned no Data PR.");
+    throw new Error("Source Hunter returned no Data PR.");
   }
 
   return pr;

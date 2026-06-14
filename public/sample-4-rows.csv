@@ -1,0 +1,5 @@
+company_name,website,linkedin_url,current_headcount,current_hq,current_funding,current_industry,account_owner,segment
+Snowflake,https://www.snowflake.com,https://www.linkedin.com/company/snowflake-computing,6000,"Bozeman, MT","Public","Cloud data platform",Raj Mehta,Enterprise
+Amplitude,https://amplitude.com,https://www.linkedin.com/company/amplitude-analytics,650,"San Francisco, CA","Public","Product analytics",Chloe Kim,Mid-Market
+Linear,https://linear.app,https://www.linkedin.com/company/linear-app,90,"San Francisco, CA","$35M","Project management software",Tom Kowalski,SMB
+Brex,https://www.brex.com,https://www.linkedin.com/company/brexhq,1200,"San Francisco, CA","$1.5B","Corporate financial services",Nina Torres,Enterprise

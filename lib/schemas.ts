@@ -91,6 +91,7 @@ export const AgentEventTypeSchema = z.enum([
   "company_started",
   "agent_started",
   "agent_log",
+  "agent_thinking",
   "field_update",
   "evidence_found",
   "data_pr_created",
@@ -108,6 +109,7 @@ export const AgentEventSchema = z.object({
   fieldKey: z.string().optional(),
   agent: AgentRoleSchema.optional(),
   message: z.string().optional(),
+  thinking: z.string().optional(),
   mode: z.enum(["live", "fallback"]).optional(),
   progress: z.number().min(0).max(100).optional(),
   field: FieldEvalSchema.optional(),
@@ -135,6 +137,7 @@ export const ProjectSchema = z.object({
   filename: z.string(),
   rowCount: z.number(),
   status: z.enum(["queued", "running", "completed", "failed"]),
+  runStatus: z.enum(["idle", "running", "completed", "failed"]).optional(),
   createdAt: z.string(),
   completedAt: z.string().optional(),
 });
@@ -218,49 +221,58 @@ export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 export type CompanyEvalState = z.infer<typeof CompanyEvalStateSchema>;
 export type EvalRunState = z.infer<typeof EvalRunStateSchema>;
 
-export const agentProfiles: Array<{
-  role: AgentRole;
-  name: string;
-  shortName: string;
-  description: string;
-}> = [
+export const agentProfiles = [
   {
-    role: "ingestion",
+    role: "ingestion" as AgentRole,
     name: "Ingestion Agent",
     shortName: "Ingestion",
     description: "Maps CSV columns and validates account records.",
+    icon: "FileSpreadsheet",
+    color: "zinc",
   },
   {
-    role: "source_hunter",
+    role: "source_hunter" as AgentRole,
     name: "Source Hunter",
     shortName: "Hunter",
     description: "Searches public evidence across company pages, profiles, filings, and news.",
+    icon: "Globe",
+    color: "blue",
   },
   {
-    role: "identity_resolver",
+    role: "identity_resolver" as AgentRole,
     name: "Identity Resolver",
     shortName: "Resolver",
     description: "Confirms the website, company profile, and account identity match.",
+    icon: "Fingerprint",
+    color: "violet",
   },
   {
-    role: "contradiction_analyst",
+    role: "contradiction_analyst" as AgentRole,
     name: "Contradiction Analyst",
     shortName: "Analyst",
     description: "Finds conflicts between CRM values and public evidence.",
+    icon: "AlertTriangle",
+    color: "amber",
   },
   {
-    role: "trust_scorer",
+    role: "trust_scorer" as AgentRole,
     name: "Trust Scorer",
     shortName: "Scorer",
     description: "Assigns field-level confidence and risk.",
+    icon: "ShieldCheck",
+    color: "emerald",
   },
   {
-    role: "data_pr_writer",
+    role: "data_pr_writer" as AgentRole,
     name: "Data PR Writer",
     shortName: "Writer",
     description: "Drafts the final decision, business impact, and patch.",
+    icon: "GitPullRequest",
+    color: "rose",
   },
-];
+] as const;
+
+export type AgentProfile = typeof agentProfiles[number];
 
 export const agentNameByRole = Object.fromEntries(
   agentProfiles.map((agent) => [agent.role, agent.name]),

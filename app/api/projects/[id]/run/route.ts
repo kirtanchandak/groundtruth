@@ -5,6 +5,7 @@ import {
   getProject,
   insertAgentEvent,
   insertEvidence,
+  resetProjectRows,
   updateProjectStatus,
   updateRowStatus,
   upsertCellEval,
@@ -12,8 +13,6 @@ import {
 } from "@/lib/project-store";
 import {
   agentNameByRole,
-  EvaluateResponseSchema,
-  evaluateResponseJsonSchema,
   type AgentEvent,
   type AgentRole,
   type CompanyRecord,
@@ -22,6 +21,14 @@ import {
   type GridFieldKey,
   type Project,
 } from "@/lib/schemas";
+import {
+  ingestionAgent,
+  sourceHunterAgent,
+  identityResolverAgent,
+  contradictionAnalystAgent,
+  trustScorerAgent,
+  dataPrWriterAgent,
+} from "@/lib/agents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,15 +46,22 @@ const agentSequence: AgentRole[] = [
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+type StreamState = {
+  closed: boolean;
+};
+
 function eventId() {
   return `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 async function write(
   controller: ReadableStreamDefaultController<Uint8Array>,
+  state: StreamState,
   projectId: string,
   event: Omit<AgentEvent, "id" | "timestamp" | "runId"> & { fieldKey?: GridFieldKey },
 ) {
+  if (state.closed) return;
+
   const { fieldKey, ...rest } = event;
   const payload: AgentEvent = {
     id: eventId(),
@@ -56,7 +70,16 @@ async function write(
     ...rest,
   };
   await insertAgentEvent(projectId, event.companyId, payload, fieldKey);
-  controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  if (state.closed) return;
+
+  try {
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  } catch (error) {
+    state.closed = true;
+    if (!(error instanceof Error && /closed/i.test(error.message))) {
+      throw error;
+    }
+  }
 }
 
 function fallbackPrFor(record: CompanyRecord) {
@@ -75,63 +98,9 @@ function summarize(prs: DataPR[]) {
   };
 }
 
-function buildAgentMessage(agent: AgentRole, company: string, pr: DataPR) {
-  const lowestTrust = [...pr.fieldReviews].sort((a, b) => a.trustScore - b.trustScore)[0];
-  const contradiction = pr.fieldReviews.find((field) => field.contradictions.length);
-
-  const messages: Record<AgentRole, string> = {
-    ingestion: `Mapped ${company} into the project grid and queued field cells.`,
-    source_hunter: `Found ${pr.sources.length} usable public sources for ${company}.`,
-    identity_resolver: `Matched ${company} to ${pr.website || "the supplied website/profile"}.`,
-    contradiction_analyst: contradiction
-      ? `Flagged contradiction on ${contradiction.field.replaceAll("_", " ")}.`
-      : `No blocking contradictions found for ${company}.`,
-    trust_scorer: lowestTrust
-      ? `Lowest trust field is ${lowestTrust.field.replaceAll("_", " ")} at ${lowestTrust.trustScore}%.`
-      : `Scored available evidence for ${company}.`,
-    data_pr_writer: `Drafted Data PR: ${pr.recommendedAction}`,
-  };
-
-  return messages[agent];
-}
-
-async function evaluateCompanyLive(record: CompanyRecord): Promise<DataPR> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const model = process.env.OPENAI_MODEL ?? "gpt-5.5";
-
-  const response = await client.responses.create(
-    {
-      model,
-      input: [
-        "You are GroundTruth, an autonomous RevOps data steward.",
-        "Evaluate exactly one enterprise account record using web evidence.",
-        "Return exactly one Data PR inside the prs array.",
-        "Verify headcount, HQ, funding, industry, website, LinkedIn/company profile, and segment/routing impact.",
-        JSON.stringify([record], null, 2),
-      ].join("\n"),
-      reasoning: { effort: "medium" },
-      text: {
-        verbosity: "low",
-        format: {
-          type: "json_schema",
-          name: "groundtruth_project_company_eval",
-          strict: true,
-          schema: evaluateResponseJsonSchema,
-        },
-      },
-      tools: [{ type: "web_search" }],
-    },
-    { timeout: 45000 },
-  );
-
-  const parsed = EvaluateResponseSchema.omit({ runId: true, mode: true }).parse(JSON.parse(response.output_text));
-  const pr = parsed.prs[0];
-  if (!pr) throw new Error("No Data PR returned.");
-  return pr;
-}
-
 async function emitCompany(
   controller: ReadableStreamDefaultController<Uint8Array>,
+  state: StreamState,
   projectId: string,
   rowId: string,
   record: CompanyRecord,
@@ -139,110 +108,280 @@ async function emitCompany(
   mode: "live" | "fallback",
 ) {
   await updateRowStatus(projectId, rowId, "running", 5);
-  await write(controller, projectId, {
+  await write(controller, state, projectId, {
     type: "company_started",
     mode,
     companyId: rowId,
     company: record.company_name,
-    message: `${record.company_name} row started.`,
-    progress: 5,
+    message: `Starting evaluation pipeline for ${record.company_name}.`,
+    progress: 3,
   });
 
+  // Shared state passed between agents
   let pr = fallbackPrFor(record);
   let activeMode = mode;
 
-  for (const [agentIndex, agent] of agentSequence.entries()) {
-    const progress = Math.min(12 + agentIndex * 14, 92);
-    await write(controller, projectId, {
+  // ─── Agent 1: Ingestion ─────────────────────────────────────────────────────
+  {
+    const agent: AgentRole = "ingestion";
+    const agentResult = ingestionAgent(record);
+    await write(controller, state, projectId, {
       type: "agent_started",
       mode: activeMode,
       companyId: rowId,
       company: record.company_name,
       agent,
-      message: `${agentNameByRole[agent]} started.`,
-      progress,
+      message: agentResult.thinkingMessage,
+      thinking: agentResult.thinkingMessage,
+      progress: 10,
     });
-    await updateRowStatus(projectId, rowId, "running", progress);
-    await delay(160 + index * 35);
-
-    if (agent === "source_hunter" && process.env.OPENAI_API_KEY) {
-      try {
-        pr = await evaluateCompanyLive(record);
-      } catch (error) {
-        activeMode = "fallback";
-        pr = fallbackPrFor(record);
-        console.error(`GroundTruth live project eval failed for ${record.company_name}; using fallback.`, error);
-      }
-    }
-
-    await write(controller, projectId, {
+    await updateRowStatus(projectId, rowId, "running", 10);
+    await delay(250 + index * 60);
+    await write(controller, state, projectId, {
       type: "agent_log",
       mode: activeMode,
       companyId: rowId,
       company: record.company_name,
       agent,
-      message: buildAgentMessage(agent, record.company_name, pr),
-      progress,
+      message: agentResult.completionMessage,
+      progress: 14,
     });
+  }
 
-    if (agent === "source_hunter") {
-      for (const source of pr.sources.slice(0, 2)) {
-        await delay(80);
-        await insertEvidence(projectId, rowId, "website", source);
-        await write(controller, projectId, {
-          type: "evidence_found",
+  if (state.closed) return pr;
+
+  // ─── Agent 2: Source Hunter (real LLM call with web_search) ─────────────────
+  {
+    const agent: AgentRole = "source_hunter";
+    await write(controller, state, projectId, {
+      type: "agent_started",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: `Searching public sources for ${record.company_name} (website, LinkedIn, news, filings)…`,
+      thinking: `Searching public sources for ${record.company_name}…`,
+      progress: 18,
+    });
+    await updateRowStatus(projectId, rowId, "running", 18);
+
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const result = await sourceHunterAgent(record);
+        pr = result.pr;
+        await write(controller, state, projectId, {
+          type: "agent_log",
           mode: activeMode,
           companyId: rowId,
           company: record.company_name,
           agent,
-          evidence: source,
-          fieldKey: "website",
-          message: `Evidence found: ${source.title}`,
+          message: result.thinkingMessage,
+          progress: 35,
+        });
+      } catch (error) {
+        activeMode = "fallback";
+        pr = fallbackPrFor(record);
+        console.error(`Source Hunter failed for ${record.company_name}; using fallback.`, error);
+        await write(controller, state, projectId, {
+          type: "agent_log",
+          mode: activeMode,
+          companyId: rowId,
+          company: record.company_name,
+          agent,
+          message: `Used cached data for ${record.company_name} (live search unavailable).`,
           progress: 35,
         });
       }
+    } else {
+      await delay(400 + index * 80);
+      await write(controller, state, projectId, {
+        type: "agent_log",
+        mode: activeMode,
+        companyId: rowId,
+        company: record.company_name,
+        agent,
+        message: `Found ${pr.sources.length} cached sources for ${record.company_name}.`,
+        progress: 35,
+      });
     }
 
-    if (agent === "trust_scorer") {
-      for (const field of pr.fieldReviews) {
-        await delay(70);
-        const cell = await upsertCellEval(projectId, rowId, field);
-        for (const source of field.evidence) {
-          await insertEvidence(projectId, rowId, cell.fieldKey, source);
-        }
-        await write(controller, projectId, {
-          type: "field_update",
-          mode: activeMode,
-          companyId: rowId,
-          company: record.company_name,
-          agent,
-          field: field as FieldEval,
-          fieldKey: cell.fieldKey,
-          message: `${field.field.replaceAll("_", " ")} cell scored at ${field.trustScore}%.`,
-          progress: 76,
-        });
-      }
+    // Emit evidence events
+    for (const source of pr.sources.slice(0, 3)) {
+      if (state.closed) return pr;
+      await delay(80);
+      await insertEvidence(projectId, rowId, "website", source);
+      await write(controller, state, projectId, {
+        type: "evidence_found",
+        mode: activeMode,
+        companyId: rowId,
+        company: record.company_name,
+        agent,
+        evidence: source,
+        fieldKey: "website",
+        message: `Source found: ${source.title}`,
+        progress: 38,
+      });
     }
   }
 
-  await upsertDataPr(projectId, rowId, pr);
-  await updateRowStatus(projectId, rowId, "completed", 100);
-  await write(controller, projectId, {
-    type: "data_pr_created",
-    mode: activeMode,
-    companyId: rowId,
-    company: record.company_name,
-    agent: "data_pr_writer",
-    pr,
-    message: `Data PR created for ${record.company_name}.`,
-    progress: 100,
-  });
-  await write(controller, projectId, {
+  if (state.closed) return pr;
+
+  // ─── Agent 3: Identity Resolver ─────────────────────────────────────────────
+  {
+    const agent: AgentRole = "identity_resolver";
+    const agentResult = identityResolverAgent(record, pr);
+    await write(controller, state, projectId, {
+      type: "agent_started",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.thinkingMessage,
+      thinking: agentResult.thinkingMessage,
+      progress: 46,
+    });
+    await updateRowStatus(projectId, rowId, "running", 46);
+    await delay(200 + index * 40);
+    await write(controller, state, projectId, {
+      type: "agent_log",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.completionMessage,
+      progress: 52,
+    });
+  }
+
+  if (state.closed) return pr;
+
+  // ─── Agent 4: Contradiction Analyst ─────────────────────────────────────────
+  {
+    const agent: AgentRole = "contradiction_analyst";
+    const agentResult = contradictionAnalystAgent(record, pr);
+    await write(controller, state, projectId, {
+      type: "agent_started",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.thinkingMessage,
+      thinking: agentResult.thinkingMessage,
+      progress: 58,
+    });
+    await updateRowStatus(projectId, rowId, "running", 58);
+    await delay(220 + index * 40);
+    await write(controller, state, projectId, {
+      type: "agent_log",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.completionMessage,
+      progress: 65,
+    });
+  }
+
+  if (state.closed) return pr;
+
+  // ─── Agent 5: Trust Scorer ───────────────────────────────────────────────────
+  {
+    const agent: AgentRole = "trust_scorer";
+    const agentResult = trustScorerAgent(record, pr);
+    await write(controller, state, projectId, {
+      type: "agent_started",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.thinkingMessage,
+      thinking: agentResult.thinkingMessage,
+      progress: 70,
+    });
+    await updateRowStatus(projectId, rowId, "running", 70);
+
+    // Emit per-field updates
+    for (const field of pr.fieldReviews) {
+      if (state.closed) return pr;
+      await delay(70);
+      const cell = await upsertCellEval(projectId, rowId, field);
+      for (const source of field.evidence) {
+        await insertEvidence(projectId, rowId, cell.fieldKey, source);
+      }
+      await write(controller, state, projectId, {
+        type: "field_update",
+        mode: activeMode,
+        companyId: rowId,
+        company: record.company_name,
+        agent,
+        field: field as FieldEval,
+        fieldKey: cell.fieldKey,
+        message: `"${field.field.replaceAll("_", " ")}" scored ${field.trustScore}% — ${field.rationale.slice(0, 60)}…`,
+        progress: 76,
+      });
+    }
+
+    await write(controller, state, projectId, {
+      type: "agent_log",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.completionMessage,
+      progress: 82,
+    });
+  }
+
+  if (state.closed) return pr;
+
+  // ─── Agent 6: Data PR Writer ─────────────────────────────────────────────────
+  {
+    const agent: AgentRole = "data_pr_writer";
+    const agentResult = dataPrWriterAgent(record, pr);
+    await write(controller, state, projectId, {
+      type: "agent_started",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.thinkingMessage,
+      thinking: agentResult.thinkingMessage,
+      progress: 88,
+    });
+    await updateRowStatus(projectId, rowId, "running", 88);
+    await delay(180 + index * 30);
+
+    await upsertDataPr(projectId, rowId, pr);
+    await updateRowStatus(projectId, rowId, "completed", 100);
+
+    await write(controller, state, projectId, {
+      type: "agent_log",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent,
+      message: agentResult.completionMessage,
+      progress: 95,
+    });
+
+    await write(controller, state, projectId, {
+      type: "data_pr_created",
+      mode: activeMode,
+      companyId: rowId,
+      company: record.company_name,
+      agent: "data_pr_writer",
+      pr,
+      message: `Data PR ready for ${record.company_name}.`,
+      progress: 100,
+    });
+  }
+
+  await write(controller, state, projectId, {
     type: "company_completed",
     mode: activeMode,
     companyId: rowId,
     company: record.company_name,
-    message: `${record.company_name} completed.`,
+    message: `${record.company_name} pipeline complete.`,
     progress: 100,
   });
 
@@ -251,50 +390,72 @@ async function emitCompany(
 
 export async function POST(_request: Request, context: RouteContext<"/api/projects/[id]/run">) {
   const { id } = await context.params;
+  const body = (await _request.json().catch(() => ({}))) as { rowId?: unknown };
+  const requestedRowId = typeof body.rowId === "string" ? body.rowId : undefined;
+  const isProjectRun = !requestedRowId;
   const project = await getProject(id);
 
   if (!project) {
     return Response.json({ error: "Project not found" }, { status: 404 });
   }
 
+  const targetRows = requestedRowId ? project.rows.filter((row) => row.id === requestedRowId) : project.rows;
+  if (requestedRowId && !targetRows.length) {
+    return Response.json({ error: "Row not found" }, { status: 404 });
+  }
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const mode = process.env.OPENAI_API_KEY ? "live" : "fallback";
       const prs: DataPR[] = [];
+      const state: StreamState = { closed: false };
 
       try {
-        await updateProjectStatus(id, "running");
-        await write(controller, id, {
+        await resetProjectRows(id, targetRows.map((row) => row.id));
+        if (isProjectRun) {
+          await updateProjectStatus(id, "running");
+        }
+        await write(controller, state, id, {
           type: "run_started",
           mode,
-          message: `Project run started for ${project.rows.length} rows.`,
+          message: `TrustLayer agent pipeline started — ${targetRows.length} row${targetRows.length === 1 ? "" : "s"} queued.`,
           progress: 0,
         });
 
-        for (const [index, row] of project.rows.entries()) {
-          prs.push(await emitCompany(controller, id, row.id, row.record, index, mode));
+        for (const [index, row] of targetRows.entries()) {
+          prs.push(await emitCompany(controller, state, id, row.id, row.record, index, mode));
+          if (state.closed) return;
         }
 
         const summary = summarize(prs);
-        await updateProjectStatus(id, "completed");
-        await write(controller, id, {
+        if (isProjectRun) {
+          await updateProjectStatus(id, "completed");
+        }
+        await write(controller, state, id, {
           type: "run_completed",
           mode,
-          message: "Project run completed.",
+          message: `All ${targetRows.length} row${targetRows.length === 1 ? "" : "s"} evaluated.`,
           summary,
           progress: 100,
         });
       } catch (error) {
-        console.error("GroundTruth project run failed.", error);
-        await updateProjectStatus(id, "failed" as Project["status"]);
-        await write(controller, id, {
+        console.error("TrustLayer project run failed.", error);
+        if (isProjectRun) {
+          await updateProjectStatus(id, "failed" as Project["status"]);
+        }
+        await write(controller, state, id, {
           type: "run_failed",
           mode: "fallback",
-          message: "Project run failed.",
+          message: "Pipeline run failed. Check that company_name is present in all rows.",
           progress: 100,
         });
       } finally {
-        controller.close();
+        state.closed = true;
+        try {
+          controller.close();
+        } catch {
+          // Ignore double-close when client disconnects mid-run.
+        }
       }
     },
   });

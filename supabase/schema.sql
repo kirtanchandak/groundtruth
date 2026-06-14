@@ -4,6 +4,7 @@ create table if not exists projects (
   filename text,
   row_count integer not null default 0,
   status text not null default 'queued',
+  run_status text not null default 'idle',
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
