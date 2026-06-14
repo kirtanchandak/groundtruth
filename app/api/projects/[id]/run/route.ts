@@ -525,27 +525,59 @@ export async function POST(_request: Request, context: RouteContext<"/api/projec
           progress: 0,
         });
 
-        for (const [index, row] of targetRows.entries()) {
-          prs.push(await emitCompany(controller, state, id, row.id, row.record, index, mode));
-          if (state.closed) return;
+        logRun(id, "Launching concurrent row evaluations", {
+          rows: targetRows.length,
+        });
+
+        const settled = await Promise.allSettled(
+          targetRows.map((row, index) => emitCompany(controller, state, id, row.id, row.record, index, mode)),
+        );
+
+        for (const result of settled) {
+          if (result.status === "fulfilled") {
+            prs.push(result.value);
+          } else {
+            logRun(id, "Row evaluation failed", {
+              error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+            });
+          }
         }
 
         const summary = summarize(prs);
+        const hadFailures = settled.some((result) => result.status === "rejected");
         if (isProjectRun) {
-          await updateProjectStatus(id, "completed");
+          await updateProjectStatus(id, hadFailures ? "failed" : "completed");
         }
-        logRun(id, "Run completed", {
-          mode,
-          rows: targetRows.length,
-          summary,
-        });
-        await write(controller, state, id, {
-          type: "run_completed",
-          mode,
-          message: `All ${targetRows.length} row${targetRows.length === 1 ? "" : "s"} evaluated.`,
-          summary,
-          progress: 100,
-        });
+        if (hadFailures) {
+          logRun(id, "Run completed with row failures", {
+            mode,
+            rows: targetRows.length,
+            summary,
+          });
+          await write(controller, state, id, {
+            type: "run_failed",
+            mode,
+            message: `Completed with ${settled.filter((result) => result.status === "rejected").length} row failure${settled.filter((result) => result.status === "rejected").length === 1 ? "" : "s"}.`,
+            summary,
+            progress: 100,
+          });
+        } else {
+          if (isProjectRun) {
+            await updateProjectStatus(id, "completed");
+          }
+          logRun(id, "Run completed", {
+            mode,
+            rows: targetRows.length,
+            summary,
+          });
+          await write(controller, state, id, {
+            type: "run_completed",
+            mode,
+            message: `All ${targetRows.length} row${targetRows.length === 1 ? "" : "s"} evaluated.`,
+            summary,
+            progress: 100,
+          });
+        }
       } catch (error) {
         console.error("TrustLayer project run failed.", error);
         logRun(id, "Run failed", {

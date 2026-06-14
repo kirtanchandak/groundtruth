@@ -59,6 +59,44 @@ export function ingestionAgent(record: CompanyRecord): {
 // ─── Agent 2: Source Hunter ──────────────────────────────────────────────────
 // Makes the ONE real LLM call with web_search to gather all evidence and
 // produce the full DataPR. All subsequent agents work from this output.
+function ensureAllFields(pr: DataPR, record: CompanyRecord): DataPR {
+  const requiredFields = [
+    "headcount",
+    "hq",
+    "funding",
+    "industry",
+    "website",
+    "linkedin_profile",
+    "segment_routing",
+  ] as const;
+  
+  const existingFields = new Set(pr.fieldReviews.map((f) => f.field));
+
+  for (const rf of requiredFields) {
+    if (!existingFields.has(rf)) {
+      let currentValue = "Missing";
+      if (rf === "headcount") currentValue = record.current_headcount || "Missing";
+      if (rf === "hq") currentValue = record.current_hq || "Missing";
+      if (rf === "funding") currentValue = record.current_funding || "Missing";
+      if (rf === "industry") currentValue = record.current_industry || "Missing";
+      if (rf === "website") currentValue = record.website || "Missing";
+      if (rf === "linkedin_profile") currentValue = record.linkedin_url || "Missing";
+      if (rf === "segment_routing") currentValue = record.segment || "Missing";
+
+      pr.fieldReviews.push({
+        field: rf,
+        currentValue,
+        proposedValue: currentValue,
+        trustScore: 0,
+        rationale: "No public evidence found to evaluate this field.",
+        contradictions: [],
+        evidence: [],
+      });
+    }
+  }
+  return pr;
+}
+
 export async function sourceHunterAgent(
   record: CompanyRecord,
 ): Promise<SourceHunterResult> {
@@ -107,8 +145,11 @@ export async function sourceHunterAgent(
     const parsed = EvaluateResponseSchema.omit({ runId: true, mode: true }).parse(
       JSON.parse(response.output_text),
     );
-    const pr = parsed.prs[0];
+    let pr = parsed.prs[0];
     if (!pr) throw new Error("Source Hunter returned no DataPR.");
+
+    pr = ensureAllFields(pr, record);
+
     logAgent("Web search completed", {
       company: record.company_name,
       sources: pr.sources.length,
@@ -120,7 +161,9 @@ export async function sourceHunterAgent(
       thinkingMessage: `Found ${pr.sources.length} public source${pr.sources.length !== 1 ? "s" : ""} for ${record.company_name}.`,
     };
   } catch {
-    const pr = buildFallbackResponse([record]).prs[0]!;
+    let pr = buildFallbackResponse([record]).prs[0]!;
+    pr = ensureAllFields(pr, record);
+    
     logAgent("Web search unavailable; using fallback cache", {
       company: record.company_name,
       sources: pr.sources.length,

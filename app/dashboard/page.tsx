@@ -265,6 +265,10 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
     const rowEvents = rows.flatMap((row) => row.events);
     return [...events, ...rowEvents].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 120);
   }, [events, rows]);
+  const selectedRowEvents = useMemo(() => {
+    if (!selectedRow) return projectEvents;
+    return projectEvents.filter((event) => event.companyId === selectedRow.id || !event.companyId);
+  }, [projectEvents, selectedRow]);
 
   const completedRows = rows.filter((row) => row.status === "completed").length;
   const changedCells = rows.flatMap((row) => row.cells).filter((cell) => cell.status === "changed").length;
@@ -1056,7 +1060,7 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
             ) : null}
 
             <LiveStreamPanel
-              events={projectEvents}
+              events={selectedRow ? selectedRowEvents : projectEvents}
               isLive={isRunning || rows.some((row) => row.status === "running")}
               contextLabel={selectedRow?.record.company_name ?? activeProject?.name ?? "project"}
             />
@@ -1308,7 +1312,7 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
                     row={selectedRow}
                     cell={selectedCell}
                     selectedField={selectedField}
-                    events={projectEvents.filter((event) => !selectedRow || event.companyId === selectedRow.id || !event.companyId)}
+                    events={selectedRowEvents}
                     tab={activeTab}
                     onTabChange={setActiveTab}
                     action={selectedRow ? actions[selectedRow.id] : undefined}

@@ -383,16 +383,77 @@ const genericFallback = (record: CompanyRecord, index: number): DataPR => ({
       currentValue: record.website || "Missing",
       proposedValue: record.website || "Needs verification",
       trustScore: record.website ? 68 : 25,
-      rationale: "GroundTruth needs a stronger public source trail before changing this record.",
+      rationale: "A valid website helps confirm the account identity.",
       contradictions: record.website ? [] : ["No website was supplied in the uploaded CSV."],
       evidence: record.website
         ? [evidence(`${record.company_name} website`, record.website, "website", "Provided website is available for follow-up verification.")]
         : [],
     },
+    {
+      field: "linkedin_profile",
+      currentValue: record.linkedin_url || "Missing",
+      proposedValue: record.linkedin_url || "Needs verification",
+      trustScore: record.linkedin_url ? 63 : 20,
+      rationale: "The company profile is useful for identity matching.",
+      contradictions: record.linkedin_url ? [] : ["No LinkedIn URL was supplied in the uploaded CSV."],
+      evidence: record.linkedin_url
+        ? [evidence(`${record.company_name} LinkedIn`, record.linkedin_url, "linkedin", "Provided LinkedIn URL is available for verification.")]
+        : [],
+    },
+    {
+      field: "headcount",
+      currentValue: record.current_headcount || "Missing",
+      proposedValue: record.current_headcount || "Needs verification",
+      trustScore: record.current_headcount ? 52 : 18,
+      rationale: "Employee scale should be checked against public signals before routing changes.",
+      contradictions: record.current_headcount ? [] : ["No headcount value was supplied in the uploaded CSV."],
+      evidence: [],
+    },
+    {
+      field: "hq",
+      currentValue: record.current_hq || "Missing",
+      proposedValue: record.current_hq || "Needs verification",
+      trustScore: record.current_hq ? 50 : 18,
+      rationale: "Headquarters should be normalized before territory assignment.",
+      contradictions: record.current_hq ? [] : ["No HQ value was supplied in the uploaded CSV."],
+      evidence: [],
+    },
+    {
+      field: "funding",
+      currentValue: record.current_funding || "Missing",
+      proposedValue: record.current_funding || "Needs verification",
+      trustScore: record.current_funding ? 47 : 12,
+      rationale: "Funding values often need corroboration across sources and should be treated carefully.",
+      contradictions: record.current_funding ? [] : ["No funding value was supplied in the uploaded CSV."],
+      evidence: [],
+    },
+    {
+      field: "industry",
+      currentValue: record.current_industry || "Missing",
+      proposedValue: record.current_industry || "Needs verification",
+      trustScore: record.current_industry ? 56 : 18,
+      rationale: "Industry should be normalized for routing and scoring.",
+      contradictions: record.current_industry ? [] : ["No industry value was supplied in the uploaded CSV."],
+      evidence: [],
+    },
+    {
+      field: "segment_routing",
+      currentValue: record.segment || "Missing",
+      proposedValue: record.segment || "Needs verification",
+      trustScore: record.segment ? 61 : 18,
+      rationale: "Segment routing should be verified against scale and deal motion.",
+      contradictions: record.segment ? [] : ["No segment value was supplied in the uploaded CSV."],
+      evidence: [],
+    },
   ],
-  sources: record.website
-    ? [evidence(`${record.company_name} website`, record.website, "website", "Provided website is available for follow-up verification.")]
-    : [],
+  sources: [
+    ...(record.website
+      ? [evidence(`${record.company_name} website`, record.website, "website", "Provided website is available for follow-up verification.")]
+      : []),
+    ...(record.linkedin_url
+      ? [evidence(`${record.company_name} LinkedIn`, record.linkedin_url, "linkedin", "Provided LinkedIn URL is available for verification.")]
+      : []),
+  ],
 });
 
 export function buildFallbackResponse(rows: CompanyRecord[]): EvaluateResponse {
