@@ -1,8 +1,8 @@
-# TrustLayer
+# GroundTruth
 
-TrustLayer is an autonomous, AI-powered B2B data steward designed to continuously audit enterprise databases. It detects contradictions, assigns trust scores, and automatically packages verified updates to sync directly with your CRM. 
+GroundTruth is an autonomous, AI-powered B2B data steward designed to continuously audit enterprise databases. It detects contradictions, assigns trust scores, and automatically packages verified updates to sync directly with your CRM. 
 
-Your database is lying. TrustLayer tells you whether to believe it.
+Your database is lying. GroundTruth tells you whether to believe it.
 
 ## Key Features
 
@@ -43,7 +43,7 @@ Your database is lying. TrustLayer tells you whether to believe it.
 
 If you'd like to test the evaluation pipeline, we have several sample CSV files pre-configured for different edge cases. You can download them directly or find them in the `public/` and root directories.
 
-Upload any of these from the TrustLayer dashboard to see the agents in action:
+Upload any of these from the GroundTruth dashboard to see the agents in action:
 
 - **[Standard 2 Rows](/sample-2-rows.csv)**: A basic test file with standard B2B data.
 - **[Standard 3 Rows](/sample-3-rows.csv)**: Slightly larger standard set.
