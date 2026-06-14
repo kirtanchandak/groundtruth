@@ -3,7 +3,6 @@ import {
   GitPullRequest,
   Search,
   ShieldCheck,
-  Layers,
   Upload,
   AlertTriangle,
   Database,
@@ -11,6 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 
 const liveAuditRows = [
   {
@@ -48,9 +48,7 @@ export default function LandingPage() {
     <main className="min-h-screen bg-white text-zinc-900 transition-colors duration-300 dark:bg-zinc-950 dark:text-zinc-50">
       <nav className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6 lg:px-8">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-900 text-white dark:bg-white dark:text-zinc-950">
-            <Layers className="h-5 w-5" aria-hidden="true" />
-          </div>
+          <Logo size="md" />
           <p className="text-lg font-bold tracking-tight">TrustLayer</p>
         </div>
         <div className="flex items-center gap-4">
@@ -318,9 +316,7 @@ export default function LandingPage() {
       <footer className="border-t border-zinc-200 dark:border-white/10 mt-32 py-12 bg-zinc-50 dark:bg-zinc-950">
         <div className="mx-auto max-w-5xl px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-zinc-500 dark:text-zinc-400">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-zinc-900 text-white dark:bg-white dark:text-zinc-950">
-              <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-            </div>
+            <Logo size="sm" />
             <span className="font-semibold text-zinc-900 dark:text-white">TrustLayer</span>
           </div>
           <p>© {new Date().getFullYear()} TrustLayer Inc. All rights reserved.</p>

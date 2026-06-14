@@ -24,7 +24,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Layers,
   Upload,
   X,
   PlayIcon,
@@ -32,6 +31,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 import Papa from "papaparse";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -757,8 +757,8 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
             <div className="border-b border-zinc-200 dark:border-white/10 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <Link href="/dashboard" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900">
-                    <Layers className="h-5 w-5" aria-hidden="true" />
+                  <Link href="/dashboard" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/50">
+                    <Logo size="md" />
                   </Link>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">TrustLayer</p>
@@ -831,8 +831,10 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
                         <p className="line-clamp-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">{project.name}</p>
                         <ProjectStatus status={project.status} />
                       </div>
+                      <div className="flex items-center justify-between gap-2">
                       <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{project.rowCount} rows</p>
                       <p className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">{new Date(project.createdAt).toLocaleString()}</p>
+                      </div>      
                     </button>
                   ))
                 ) : (
@@ -857,12 +859,12 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
               {/* Logo / Toggle */}
               <button
                 onClick={() => setProjectsOpen(true)}
-                className="group flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-slate-800 transition-colors"
+                className="group flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 title="Expand projects sidebar"
                 type="button"
               >
-                <Layers className="h-5 w-5 block group-hover:hidden" />
-                <PanelLeftOpen className="h-5 w-5 hidden group-hover:block" />
+                <Logo size="md" className="block group-hover:hidden" />
+                <PanelLeftOpen className="h-5 w-5 hidden group-hover:block text-slate-700 dark:text-slate-300" />
               </button>
 
               <div className="h-[1px] w-8 bg-slate-200" />
@@ -925,7 +927,7 @@ export default function DashboardPage({ projectIdFromRoute }: { projectIdFromRou
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
                 <Link className="inline-flex items-center gap-1 hover:text-zinc-900 dark:text-zinc-100" href="/">
-                  <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                  <Logo size="sm" />
                   TrustLayer
                 </Link>
                 <span>/</span>
